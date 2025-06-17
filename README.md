@@ -3,7 +3,7 @@ Mercury Methylating Microbes in Vermont
 PRJNA 277296
 Code for amplicon data processing and analysis for this manuscript in prep can be found here. Raw amplicon data are stored at the NCBI SRA under BioProject PRJNA 277296
 
-Microbial Mercury Methylation in Winooski River and Englesby Brook, Vermont 
+**Microbial Mercury Methylation in Winooski River and Englesby Brook, Vermont **
 H. Sophia Fatima1, Sam Byrne1,2, Peter Ryan3, Erin Eggleston1,*
 1   Middlebury College, Biology Department,Middlebury, Vermont, USA
 2   Middlebury College, Global Health Program, Middlebury, Vermont, USA
