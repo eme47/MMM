@@ -1,0 +1,1475 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+##R Markdown
+
+---
+title: "DADA2_MMM"
+author: "Erin Eggleston
+Edited by: "Sophia Fatima"
+date: "4/1/2024"
+output: html_document
+---
+
+#To load just the amplicon data:
+#load("/Users/sophiafatima/Documents/7.MMM_Article/THESIS/DADA2_updated/Sophia_amplicon.RData")
+
+#To load results of this code script:
+#load("C:/Users/hamia/OneDrive - Middlebury College/Classes/THESIS/DADA2_updated/Visualization.RData")
+#load("/Users/sophiafatima/Desktop/Visualization.RData")
+load("/Users/sophiafatima/Documents/7. MMM_Article/THESIS/DADA2_updated/Visualization.RData")
+#load("Visualization.RData")
+
+R.Version()
+
+#Ignore this
+```{r}
+#phyloseq
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install("phyloseq")
+library(phyloseq)
+packageVersion("phyloseq") #version 1.46.0
+library(Biostrings); packageVersion("Biostrings") #version 2.70.1
+library(ggplot2); packageVersion("ggplot2") #version 3.4.4
+theme_set(theme_bw())
+
+#Rename samples based on location & water vs out of water
+library(stringr)
+samples.out <- c("WD1_RL", "WD1_RW", "WD2_RL", "WD2_RW", "WU_RL", "WU_RW", "WB_", "ED1_RL", "ED1_RW", "ED2_RL", "ED2_RW", "EU_RL", "EU_RW", "EB_", "Blank_")
+location <- sapply(strsplit(samples.out, "_"), `[`, 1)
+river <- substr(samples.out,1,1)
+river_spot <- str_extract (samples.out[samples.out!="Blank_"],"(RW|RL|B)")
+river_spot[samples.out== "Blank_"] <- "Blank"
+day <- as.integer(sapply(strsplit(samples.out, "D"), `[`, 2))
+samdf <- data.frame(Location=location, River=river, RiverSpot=river_spot)
+rownames(samdf) <- sample.names
+```
+
+#Using Prof Eggleston's Code for making figures
+
+```{r}
+#load needed packages
+#installs are commented out, but add them back as needed
+#install.packages("rlang")
+packageVersion("rlang") #v1.1.0
+#install.packages("ggplot2")
+library(ggplot2); packageVersion("ggplot2") #v3.4.1
+theme_set(theme_bw())
+#install.packages("dplyr")
+library(dplyr); packageVersion("dplyr") #v1.0.8
+#install.packages("tidyverse")
+library(tidyverse); packageVersion("tidyverse") #v1.1.1
+#for decontaminating and filtering
+#install.packages("BiocManager")
+#BiocManager::install("decontam")
+library(decontam); packageVersion("decontam") #v1.12.0
+#For ordinations and other microbial community analyses
+#BiocManager::install("phyloseq")
+library(phyloseq); packageVersion("phyloseq") #1.42.0
+library(vegan); packageVersion("vegan"); citation("vegan")  #2.6.4
+#install.packages("magrittr")
+library(magrittr); packageVersion("magrittr")
+#install.packages("remotes")
+#remotes::install_github("statdivlab/corncob")
+library(corncob); packageVersion("corncob"); citation("corncob")
+library(reshape2); packageVersion("reshape2")
+#install.packages("randomcoloR") 
+library(randomcoloR); packageVersion("randomcoloR")
+#install.packages("cowplot")
+library(cowplot); packageVersion("cowplot")
+library(grid); packageVersion("grid") #v 4.1.1
+#install.packages("gridGraphics")
+library(gridGraphics); packageVersion("gridGraphics") #v 0.5.1
+#install.packages("janitor")
+library(janitor); packageVersion("janitor") #v 2.2.0
+#install.packages("ggpubr")
+library(ggpubr); packageVersion("ggpubr") #v 0.6.0
+#install.packages("RColorBrewer")
+library(RColorBrewer); packageVersion("RColorBrewer")
+#install.packages("colorspace")
+library(colorspace)
+#install.packages("randomcoloR")
+library(randomcoloR); packageVersion("randomcoloR")
+```
+
+```{r}
+asv <-read.table("ASVs_counts.csv", sep = ",", header = TRUE, row.names = 1)
+taxa <- as.matrix(read.table("ASVs_taxonomy.csv", sep = ",", header = TRUE, row.names = 1))
+metadata <-read.table("MMM_metadata.csv", sep = ",", header = TRUE, row.names = 1)
+
+asv <- t(asv)
+
+idx<- match(rownames(asv), rownames(metadata))
+metadata <-metadata[idx,]
+metadata$site
+?otu_table
+ASV = otu_table(asv, taxa_are_rows = FALSE)
+TAX =tax_table(taxa)
+META = sample_data(metadata)
+
+ps <- phyloseq(ASV, TAX, META)
+str(ps)
+# #remove kit.neg and kit.pos
+ps<-subset_samples(ps, site !="blank")
+length(get_taxa_unique(ps, "family")) #462 unique family samples
+length(get_taxa_unique(ps, "order")) #217 unique order samples
+length(get_taxa_unique(ps, "domain")) #2 domains Bacteria, Archaea, and NA
+
+get_taxa_unique(ps, "domain") #print unique domains, get rid of mitos, chloros, and NA
+
+ps2 <- ps %>%
+  phyloseq::subset_taxa(family !="Mitochondria") %>%
+  phyloseq::subset_taxa(order !="Chloroplast") %>%
+  phyloseq::subset_taxa(domain !="NA")
+
+length(get_taxa_unique(ps2, "family")) #462
+length(get_taxa_unique(ps2, "order")) #217
+length(get_taxa_unique(ps2, "domain")) #2
+
+
+```
+```{r}
+# save the tables with no Mitochondrial/Chloroplast/Unknown sequences for use in other analyses 
+write.table(as(otu_table(ps2), "matrix"),"ASVs_no_chloromito.csv",sep=",",col.names=NA)
+write.table(as(tax_table(ps2), "matrix"),"taxa_no_chloromito.csv",sep=",",col.names=NA)
+write.table(as(sample_data(ps2), "matrix"),"metadata_no_chloromito.csv",sep=",",col.names=NA)
+```
+
+
+```{r}
+# Load in the chloro/mito filtered data 
+asv <- read.table("ASVs_no_chloromito.csv",sep=",",header=TRUE, row.names=1)
+taxon <- as.matrix(read.table("taxa_no_chloromito.csv", sep=",", header=TRUE, row.names=1))
+meta <- read.table("metadata_no_chloromito.csv",sep=",",header=T,row.names=1)
+
+ASV = otu_table(asv, taxa_are_rows = FALSE)
+TAX = tax_table(taxon)
+META = sample_data(meta)
+
+ps <- phyloseq(ASV, TAX, META)
+str(ps)
+```
+```{r}
+# Filtering using the combined method for DNA extraction-based contaminants
+contamdf.com <- isContaminant(ps, method = "combined", neg="is.neg", conc="quant_reading")
+head(contamdf.com)
+table(contamdf.com$contaminant) #Looks like the combined method found 35 contaminants.
+#Which ASVs were determined to be contaminants?
+contamdf.com[contamdf.com$contaminant == "TRUE",]
+#35 contaminant ASVs: 405, 1020, 1079, 1298, 2040, 2071, 2124, 3105, 3424, 3834, 3996, 4501, 4663, 4714, 4928, 5068, 5141, 5295, 5365, 5375, 5395, 5802, 5845, 6726, 7098, 7229, 8352, 10766, 11500, 12262, 13319, 13604, 13734, 15444, 18450
+```
+
+```{r}
+#Make a prevalence plot using the presence-absence info
+# Make data.frame of prevalence in real samples, positive control, and negative samples
+# Take a look at how Decontam marked out the different contaminants
+# Make phyloseq object of presence-absence in negative controls and true samples
+ps.pa <- transform_sample_counts(ps, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$is.neg == "TRUE", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$is.neg == "FALSE", ps.pa)
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      contaminant=contamdf.com$contaminant)
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=contaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+
+#shows no true contamination in samples
+```
+```{r}
+# Check out some more contaminants using a similar graph as in the frequency method earlier, to make sure all ID'd contaminants "LOOK" like contaminants.
+
+set.seed(100)
+plot_frequency(ps, taxa_names(ps)[which(contamdf.com$contaminant)], conc="quant_reading") +
+    xlab("DNA Concentration (QuantStudio3 read of library input concentrations ng/ul)")
+```
+
+```{r}
+# Not all of these "contaminants" were present in DNA extraction controls. Only those in DNA extraction controls, where the frequency is greater than 0 are the following:
+contaminants <- c ("ASV_405", "ASV_1020", "ASV_1079", "ASV_1298", "ASV_2040", "ASV_2071", "ASV_2124", "ASV_3105", "ASV_3424", "ASV_3834", "ASV_3996", "ASV_4501", "ASV_4663", "ASV_4714", "ASV_4928", "ASV_5068", "ASV_5141", "ASV_5295", "ASV_5365", "ASV_5375", "ASV_5395", "ASV_5802", "ASV_5845", "ASV_6726", "ASV_7098", "ASV_7229", "ASV_8352", "ASV_10766", "ASV_11500", "ASV_12262", "ASV_13319", "ASV_13604", "ASV_13734", "ASV_15444", "ASV_18450")
+
+#add an asv column to the contamdf.com dataframe and a column with the contaminants
+contamdf.com$asv = rownames(contamdf.com)
+contamdf.com$truecontam <- contamdf.com$asv %in% contaminants
+
+#Check that this worked...should be 1 "TRUE" --> not sure what this comment means, but there was one less "contaminant" than previously, 34 rather than 35 (SF 4/1/24)
+table(contamdf.com$truecontam)
+
+ps.noncontam <- prune_taxa(!contamdf.com$truecontam, ps)
+ps.noncontam #Now we have fewer ASVs because we removed these
+
+write.table(as(otu_table(ps.noncontam), "matrix"),"ASV_decontam.csv", sep = ",", col.names = NA)
+write.table(as(tax_table(ps.noncontam),"matrix"), "taxon_decontam.csv", sep = ",", col.names = NA)
+write.table(as(sample_data(ps.noncontam), "matrix"),"metadata_decontam.csv", sep = ",", col.names = NA)
+
+#Make a table summarizing the contaminants you removed. 
+DNAextraction.contam <- cbind(contamdf.com[contamdf.com$truecontam == TRUE,], tax_table(ps)[rownames(tax_table(ps)) %in% contaminants,])
+
+DNAextraction.contam
+write.table(DNAextraction.contam, "Appendix_1_DNAextraction_contaminants_decontam.csv", sep = ",", col.names = NA) #Summary table - part of Appendix
+```
+FALSE  TRUE 
+14406    34 
+
+```{r}
+#Upload data
+#import the ASV data that has been filtered for contaminants and low abundance reads. 
+ASV <- read.table("ASV_decontam.csv", sep = ",", row.names = 1, header = TRUE)
+ASV2 <- ASV[-c(15),] #Filter out blank
+taxa <- as.matrix(read.table("taxon_decontam.csv", sep = ",", row.names = 1, header = TRUE))
+metadata <- read.table("metadata_decontam.csv", sep = ",", header = TRUE, row.names = 1)
+
+meta_bray <-read.table("metadata_decontam.csv", sep = ",", header = TRUE)
+
+asv_dc = otu_table(ASV, taxa_are_rows = FALSE)
+taxa_dc = tax_table(taxa)
+meta_dc = sample_data(metadata)
+
+ps.dc <- phyloseq(asv_dc,taxa_dc,meta_dc)
+```
+
+```{r}
+library(phyloseq)
+library(tidyverse)
+library(dplyr)
+
+ASV$count<- rowSums(ASV!=0)
+print(ASV$count)
+
+CountASVs<-ASV$count
+# 102  321  417 1615 2088 2176 3020 2324 1796 2685 2303 1752 2025 1344   13
+
+```
+
+#PCOA - did not use in the end, data not represented accurately
+```{r}
+#For Bray-Curtis, turn data into relative abundances since these data are compositional.
+relabund <- function(sample) { #Write a relative abundance function
+  x = sample/sum(sample)
+  x = x*100
+  return(x)
+}
+
+#pcoa all data bray-curtis, relative abundance
+ASV.all<- apply (ASV, 1, relabund)
+dim(ASV.all) #see how many ASVs are there: 14407
+ASV.all <- ASV.all[rowSums(ASV.all) != 0, ] #get rid of ASVs that have no abundance in any samples
+dim(ASV.all) #check to see how many ASVs are left. Looks like 14407 ASVs are left.
+ASV.all <- t(ASV.all) #make sure sample names are rows
+ASV.all.log <- log(ASV.all+1) #Log transform the relative abundance data, where I add a 1 pseudocount to everything
+
+#Redo everything without blank
+
+#pcoa all data bray-curtis, relative abundance
+ASV.all<- apply (ASV2, 1, relabund)
+dim(ASV.all) #see how many ASVs are there
+ASV.all <- ASV.all[rowSums(ASV.all) != 0, ] #get rid of ASVs that have no abundance in any samples
+dim(ASV.all) #check to see how many ASVs are left. Looks like 9966 ASVs are left.
+ASV.all <- t(ASV.all) #make sure sample names are rows
+ASV.all.log <- log(ASV.all+1) #Log transform the relative abundance data, where I add a 1 pseudocount to everything
+
+#Helpful reference - http://r-sig-ecology.471788.n2.nabble.com/Variability-explanations-for-the-PCO-axes-as-in-Anderson-and-Willis-2003-td6429547.html
+ASV.all.log.b <- vegdist(ASV.all.log, "bray") #calculate bray curtis dissimilarity
+pcoa <- cmdscale(ASV.all.log.b, k=(3), eig=TRUE) #metric dimensional scaling (principal coordinates analysis)
+barplot(pcoa$eig) #take a look at what principal coordinates best explain the data. Principal coordinate 1 looks much different than the others, but then there is a a gradual decline in the principal coordinate values
+pcoa.eig <- eigenvals(pcoa) #extract eigenvalues
+
+##show pc explanation fig
+Variance <- pcoa.eig / sum(pcoa.eig) #calculate the percent of variance explained by each axis
+Variance1 <- 100 * signif(Variance[1], 2) #extract percent explained by variance 1
+Variance2 <- 100 * signif(Variance[2], 2) #extract percent explained by variance 2
+
+#This is not working...
+#adonis_result <- adonis2(ASV.all.log.b ~ site, data = pcoa, permutations = 999)
+
+# Print the PERMANOVA result
+#print(adonis_result)
+
+#This is what I got but will go back to this later
+#PERMANOVA analysis with 999 permutations suggests that these sample type distinctions are not quite significant (Pseudo-F: 1.4183; p-value = 0.036)
+
+meta_bray2<- meta_bray%>%
+  filter(name!="Blank")
+#GGPLOT2 plotting
+pcoa <- cbind(pcoa$points, meta_bray2) # combine the Pcoa values with metadata for easier plotting
+pcoa$river <- factor(pcoa$river) #adjust the levels so they plot correctly!
+
+#principal coordinates 1 and 2
+
+ggplot(pcoa, aes(x = pcoa[,1]*(-1), y = pcoa[,2], colour = river, shape = site)) +
+  geom_point(size = 4, stroke = 2) +
+  ylim(-0.4,0.6)+
+  labs(x = paste0("PCoA1 (", Variance1, "%)"), y = paste0("PCoA2 (",Variance2, "%)"), title = "RL RW and Bay PCoA of Bray-Curtis Dissimilarity", shape= "Site", colour = "Stream")+
+  theme(legend.text.align = 0)
+  
+```
+#NMDS Plot
+```{r}
+nmds = metaMDS(ASV.all.log.b, k=(3))
+
+nmds2 = metaMDS(ASV.all.log.b, k=(2))
+
+stressplot(nmds)
+stressplot(nmds2)
+
+plot(nmds)
+plot(nmds2)
+
+#plotting nmds
+
+nmds2 <- cbind(nmds2$points, meta_bray2) # combine the Pcoa values with metadata for easier plotting
+nmds$river <- factor(nmds2$river) #adjust the levels so they plot correctly!
+
+#It looks like the NMDS plot removed some values so
+#Check for missing values in dataset
+missing_rows <- which(rowSums(is.na(nmds2)) > 0)
+missing_rows
+
+#Check what the stress is
+metaMDS(comm = ASV.all, distance = "bray", k = 2, try = 40, trymax = 100,      engine = "monoMDS", autotransform = FALSE, weakties = TRUE,      model = "global", maxit = 300)
+
+# Stress:     0.07122002 
+
+nmds.plot<-ggplot(nmds2, aes(x = MDS1 * (-1), y = MDS2, colour = river, shape = site)) +
+  geom_point(size = 4, stroke = 0.5) +
+  ylim(-0.4,0.6)+
+  labs(x = paste0("NMDS1"), y = paste0("NMDS2"), title = "Riparian Land, Riparian Water, and Bay NMDS of Bray-Curtis Dissimilarity", shape= "Site", colour = "Stream")+
+  scale_shape_manual(name="Site",values=c(0,1,2),labels=c("Bay","Riparian Land","Riparian Water"))+
+  scale_colour_manual(name="Stream",values=c("coral1","cyan3"),labels=c("Englesby","Winooski"))+
+  theme(text=element_text(size=12),
+        legend.text.align = 0)+
+  scale_x_continuous(limits = c(-2.5, 5))+   # Adjust scale limits
+  scale_y_continuous(limits = c(-2.5, 5))+
+  annotate(geom="label", x=-1, y=4, size=3,  # Adding stress label
+           label=paste("Stress = 0.0712"))
+
+ggsave("NMDS2.tiff", plot = nmds.plot, dpi = 1000, width = 8, height = 5, units = "in")
+
+metaMDS(comm = ASV.all, distance = "bray", k = 2, try = 40, trymax = 100,      engine = "monoMDS", autotransform = FALSE, weakties = TRUE,      model = "global", maxit = 300)
+
+```
+
+```{r}
+#Stacked bar chart of microbial relative abundances by sample type
+
+# Transform counts to relative abundance to visualize bar charts
+
+ps_ra<-transform_sample_counts(ps.noncontam, function(OTU) OTU/sum(OTU))
+ps_ra
+str(ps_ra)
+sample_data(ps_ra)$river<-factor(sample_data(ps_ra)$river,levels=c("W", "E"))
+sample_data(ps_ra)$site <- factor(sample_data(ps_ra)$site, levels = c("RL", "RW", "B"))
+
+#subset archaea
+#a_ps_ra <- subset_taxa(ps_ra, domain == "Archaea")
+
+#figure out how many colors you need for archaea
+#length(get_taxa_unique(a_ps_ra, "order")) #6
+#length(get_taxa_unique(a_ps_ra, "class")) #5
+#length(get_taxa_unique(a_ps_ra, "phylum")) #3
+#length(get_taxa_unique(a_ps_ra, "family")) #6
+
+
+
+#filter for only taxa >.008 relative abundance across all samples
+ps_ra_top <- subset_samples(ps_ra, site != "Blank")
+ps_ra_top <- filter_taxa(ps_ra,function(x) sum (x) > .005, TRUE)
+
+
+#figure out how many colors you need
+length(get_taxa_unique(ps_ra, "order")) #217
+length(get_taxa_unique(ps_ra, "class")) #95
+length(get_taxa_unique(ps_ra, "phylum")) #44
+length(get_taxa_unique(ps_ra, "family")) #462
+length(get_taxa_unique(ps_ra, "genus")) #1036
+
+#how many colors for filtered rel abundance ps object?
+length(get_taxa_unique(ps_ra_top, "order")) #86
+length(get_taxa_unique(ps_ra_top, "class")) #39
+length(get_taxa_unique(ps_ra_top, "phylum")) #21
+length(get_taxa_unique(ps_ra_top, "family")) #139
+
+# If there are unnamed columns, you can remove them
+sample_data <- sample_data(ps_ra)[, !grepl("^X", colnames(sample_data(ps_ra)))]
+
+sample_data(ps_ra)
+
+rownames(sample_data(ps_ra)) <- c("WD1RL","WD1RW","WD2RL","WD2RW","WURL","WURW","WB","ED1RL","ED1RW","ED2RL","ED2RW","EURL","EURW","EB","Blank")
+
+# Subset based on the 'river' column
+ps_ra_Englesby <- subset_samples(ps_ra, river == "E")
+#add shorthand site names
+get_variable(ps_ra_Englesby, "site")
+#get_variable(ps_ra_Englesby, "site")
+head(sample_data(ps_ra_Englesby))
+
+sample_data(ps_ra_Englesby)$site<-as.factor(sample_data(ps_ra_Englesby)$site)
+get_variable(ps_ra_Englesby, "site")
+head(sample_data(ps_ra_Englesby))
+View(sample_data(ps_ra_Englesby))
+
+ps_ra_blank <- subset_samples(ps_ra, site %in% c("Blank"))
+ps_ra_Winooski <- ps_ra %>% subset_samples(river == "W")
+
+#you can make c/p/o any number of colors you want; with as much difference between the colors as possible (distinct colors)
+par(mar=c(3,4,2,2))
+display.brewer.all()
+c <- 95
+palette_c <- distinctColorPalette(c, runTsne = TRUE)
+
+p <-44
+palette_p <- distinctColorPalette(p, runTsne = TRUE)
+
+o <-217
+palette_o <- distinctColorPalette(o)
+
+g<-1036
+palette_g <- distinctColorPalette(g)
+```
+
+#Relative Abundance Plots
+```{r}
+# Create all sample type graphs from the level of phylum
+
+p1 <- plot_bar(subset_samples(ps_ra_Englesby), fill="phylum")+
+  geom_bar(aes(fill=phylum), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_p) +
+  ggtitle("Englesby") +
+  facet_grid(. ~ site, scales = "free", space = "free")+
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(size=8,angle=0,hjust=0.5), plot.title = element_text(size = 15, face = "bold"))+
+  theme(axis.title.y = element_text(size = 12))+
+  ylab("Relative Abundance")
+p1
+
+#Removed blank
+
+#p2 <-  plot_bar(subset_samples(ps_ra_blank), fill="phylum")+
+#  geom_bar(aes(fill=phylum), stat="identity",position="stack") +
+#  theme(strip.text=element_text(face="bold")) +
+#  scale_fill_manual(values=palette_p) +
+#  ggtitle("Negative Control") +
+#  theme(legend.position = "none") +
+#  theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
+#  theme(axis.title.y = element_text(size = 11))+
+#  ylab("Relative Abundance")
+
+p3 <-  plot_bar(subset_samples(ps_ra_Winooski), fill="phylum")+
+  geom_bar(aes(fill=phylum), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_p) +
+  ggtitle("Winooski") +
+  facet_grid(. ~ site, scales = "free", space = "free")+
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(size=8, angle=0,hjust=0.5), plot.title = element_text(size = 15, face = "bold"))+
+  theme(axis.title.y = element_text(size = 12))+
+  ylab("Relative Abundance")
+
+
+#plot PHYLUM graph with common legend
+P_grid <-plot_grid(p1,p3, labels = c("A","B"), ncol = 2, nrow = 1)
+#P_grid <-plot_grid(p1,p3,p2, labels = c("A","B","C"), ncol = 3, nrow = 1)
+
+#bottom_row_P<- plot_grid(p3,p4,p2, labels = c("B","C","D"), ncol = 3, nrow = 1)
+
+
+#P_grid <-plot_grid(p1,bottom_row_P, labels = c("A",""), ncol = 1)
+
+p_legend <- plot_bar(subset_samples(ps_ra), fill="phylum")+
+  geom_bar(aes(fill=phylum), stat="identity",position="stack") +
+  scale_fill_manual(values=palette_p) +
+  ggtitle("Englesby") +
+  theme(legend.position = "bottom") 
+p_legend
+
+legend <- get_plot_component(
+  p_legend, 'guide-box-bottom', return_all = TRUE +
+    theme(legend.position = "bottom")
+)
+
+
+plot_grid(P_grid, legend, ncol = 1, rel_heights = c(1, .5))  
+
+png(file="MMM_total_phylum_barplot.png", width=10, height =10, units='in', res = 1000)
+plot_grid(P_grid, legend, ncol = 1, rel_heights = c(1, .5))
+dev.off()
+
+```
+
+```{r}
+# Create all sample type graphs from the level of class, ASV >0.5%
+# Did not end up using this code
+
+# Function to filter ASVs with >0.5% mean relative abundance
+filter_by_abundance <- function(physeq_obj, threshold = 0.005) {
+  # Calculate mean relative abundance for each ASV
+  mean_abund <- taxa_sums(physeq_obj) / sum(taxa_sums(physeq_obj))
+  # Keep only ASVs above the threshold
+  keep_taxa <- names(mean_abund[mean_abund > threshold])
+  prune_taxa(keep_taxa, physeq_obj)
+}
+
+# Filter your Englesby and Winooski phyloseq objects
+ps_filtered_Englesby <- filter_by_abundance(ps_ra_Englesby)
+ps_filtered_Winooski <- filter_by_abundance(ps_ra_Winooski)
+
+#Filter total phyloseq object
+ps_ra_filtered <- filter_by_abundance(ps_ra)
+
+
+c1 <- plot_bar(subset_samples(ps_filtered_Englesby), fill="class")+
+  geom_bar(aes(fill=class), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_c) +
+  ggtitle("Englesby") +
+  facet_grid(. ~ site, scales = "free", space = "free")+
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(size=8,angle=0,hjust=0.5), plot.title = element_text(size = 15, face = "bold"))+
+  theme(axis.title.y = element_text(size = 12))+
+  ylab("Relative Abundance")
+c1
+
+#Removed blank
+
+#p2 <-  plot_bar(subset_samples(ps_ra_blank), fill="phylum")+
+#  geom_bar(aes(fill=phylum), stat="identity",position="stack") +
+#  theme(strip.text=element_text(face="bold")) +
+#  scale_fill_manual(values=palette_p) +
+#  ggtitle("Negative Control") +
+#  theme(legend.position = "none") +
+#  theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
+#  theme(axis.title.y = element_text(size = 11))+
+#  ylab("Relative Abundance")
+
+c3 <-  plot_bar(subset_samples(ps_filtered_Winooski), fill="class")+
+  geom_bar(aes(fill=class), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_c) +
+  ggtitle("Winooski") +
+  facet_grid(. ~ site, scales = "free", space = "free")+
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(size=8, angle=0,hjust=0.5), plot.title = element_text(size = 15, face = "bold"))+
+  theme(axis.title.y = element_text(size = 12))+
+  ylab("Relative Abundance")
+
+
+#plot PHYLUM graph with common legend
+C_grid <-plot_grid(c1,c3, labels = c("A","B"), ncol = 2, nrow = 1)
+#C_grid <-plot_grid(p1,p3,p2, labels = c("A","B","C"), ncol = 3, nrow = 1)
+
+#bottom_row_P<- plot_grid(p3,p4,p2, labels = c("B","C","D"), ncol = 3, nrow = 1)
+
+#P_grid <-plot_grid(p1,bottom_row_P, labels = c("A",""), ncol = 1)
+
+c_legend <- plot_bar(subset_samples(ps_ra_filtered), fill="class")+
+  geom_bar(aes(fill=class), stat="identity",position="stack") +
+  scale_fill_manual(values=palette_c) +
+  ggtitle("Englesby") +
+  theme(legend.position = "bottom") 
+c_legend
+
+legend <- get_plot_component(
+  c_legend, 'guide-box-bottom', return_all = TRUE +
+    theme(legend.position = "bottom")
+)
+
+
+plot_grid(C_grid, legend, ncol = 1, rel_heights = c(1, .5))  
+
+png(file="MMM_total_class_barplot_ASV0.5.png", width=10, height =10, units='in', res = 1000)
+plot_grid(C_grid, legend, ncol = 1, rel_heights = c(1, .5))
+dev.off()
+```
+
+
+```{r}
+# Create all sample type graphs from the level of class
+c1 <- plot_bar(subset_samples(ps_ra_Englesby), fill="class")+
+  geom_bar(aes(fill=class), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_c) +
+  ggtitle("Englesby") +
+  facet_grid(. ~ site, scales = "free", space = "free")+
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(size=8,angle=0,hjust=0.5), plot.title = element_text(size = 15, face = "bold"))+
+  theme(axis.title.y = element_text(size = 12))+
+  ylab("Relative Abundance")
+c1
+
+#Removed blank
+
+#p2 <-  plot_bar(subset_samples(ps_ra_blank), fill="phylum")+
+#  geom_bar(aes(fill=phylum), stat="identity",position="stack") +
+#  theme(strip.text=element_text(face="bold")) +
+#  scale_fill_manual(values=palette_p) +
+#  ggtitle("Negative Control") +
+#  theme(legend.position = "none") +
+#  theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
+#  theme(axis.title.y = element_text(size = 11))+
+#  ylab("Relative Abundance")
+
+c3 <-  plot_bar(subset_samples(ps_ra_Winooski), fill="class")+
+  geom_bar(aes(fill=class), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_c) +
+  ggtitle("Winooski") +
+  facet_grid(. ~ site, scales = "free", space = "free")+
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(size=8, angle=0,hjust=0.5), plot.title = element_text(size = 15, face = "bold"))+
+  theme(axis.title.y = element_text(size = 12))+
+  ylab("Relative Abundance")
+
+
+#plot PHYLUM graph with common legend
+C_grid <-plot_grid(c1,c3, labels = c("A","B"), ncol = 2, nrow = 1)
+#C_grid <-plot_grid(p1,p3,p2, labels = c("A","B","C"), ncol = 3, nrow = 1)
+
+#bottom_row_P<- plot_grid(p3,p4,p2, labels = c("B","C","D"), ncol = 3, nrow = 1)
+
+
+#P_grid <-plot_grid(p1,bottom_row_P, labels = c("A",""), ncol = 1)
+
+c_legend <- plot_bar(subset_samples(ps_ra), fill="class")+
+  geom_bar(aes(fill=class), stat="identity",position="stack") +
+  scale_fill_manual(values=palette_c) +
+  ggtitle("Englesby") +
+  theme(legend.position = "bottom") 
+c_legend
+
+legend <- get_plot_component(
+  c_legend, 'guide-box-bottom', return_all = TRUE +
+    theme(legend.position = "bottom")
+)
+
+
+plot_grid(C_grid, legend, ncol = 1, rel_heights = c(1, .5))  
+
+png(file="MMM_total_class_barplot.png", width=10, height =10, units='in', res = 1000)
+plot_grid(C_grid, legend, ncol = 1, rel_heights = c(1, .5))
+dev.off()
+  
+```
+
+```{r}
+# Create all sample type graphs from the level of order
+
+o1 <- plot_bar(subset_samples(ps_ra_Englesby), fill="order")+
+  geom_bar(aes(fill=order), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_o) +
+  ggtitle("Englesby") +
+  facet_grid(. ~ site, scales = "free", space = "free")+
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
+  theme(axis.title.y = element_text(size = 11))+
+  ylab("Relative Abundance")
+
+#o2 <-  plot_bar(subset_samples(ps_ra_blank), fill="order")+
+ # geom_bar(aes(fill=order), stat="identity",position="stack") +
+  #theme(strip.text=element_text(face="bold")) +
+  #scale_fill_manual(values=palette_o) +
+  #ggtitle("Controls") +
+  #theme(legend.position = "none") +
+  #theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
+  #theme(axis.title.y = element_text(size = 11))+
+  #ylab("Relative Abundance")
+
+o3 <-  plot_bar(subset_samples(ps_ra_Winooski), fill="order")+
+  geom_bar(aes(fill=order), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_o) +
+  ggtitle("Winooski") +
+  facet_grid(. ~ site, scales = "free", space = "free")+
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
+  theme(axis.title.y = element_text(size = 11))+
+  ylab("Relative Abundance")
+
+
+#plot order graph with common legend
+#bottom_row_O<- plot_grid(o3,o4,o2, labels = c("B","C","D"), ncol = 3, nrow = 1)
+
+
+O_grid <-plot_grid(o1,o3, labels = c("A","B"), ncol = 1)
+
+o_legend <- plot_bar(subset_samples(ps_ra_Englesby), fill="order")+
+  geom_bar(aes(fill=order), stat="identity",position="stack") +
+  scale_fill_manual(values=palette_o) +
+  ggtitle("Englesby") +
+  theme(legend.position = "bottom") 
+
+
+legendO <- get_legend(
+  o_legend +
+    theme(legend.position = "bottom")
+)
+
+O_grid
+legendO
+plot_grid(O_grid, legendO, ncol = 1, nrow = 2, rel_heights = c(100, 0.1))
+  
+plot_grid(O_grid, legendO, ncol = 1, rel_heights = c(100, 0.1))
+
+ggdraw(plot_grid(plot_grid(o1,legendO, labels = c("A",""), ncol =1),
+                 plot_grid(NULL, legendO, ncol = 2),
+                 rel_widths = c(1,0.01)))
+
+plot_grid(O_grid, legendO, ncol = 2, rel_heights = c(1, .5))
+png(file="MMM_total_order_barplot.png", width=22, height = 14, units='in', res = 300)
+plot_grid(O_grid, legendO, ncol = 2, rel_heights = c(1, .5))
+dev.off()
+
+```
+
+#Subsetting mercury methylators by taxonomic level
+```{r}
+
+#by genus
+subset_taxa(ps_ra, genus == "Desulfovibrio")
+
+#subset by order within proteobacteria
+ps_MMM_proteo_o <- subset_taxa(ps.noncontam, order == "Desulfovibrionales" | order == "Desulfobacterales" | order == "Geobacterales" | order == "Desulfomonilales" | order == "Syntrophales"| order == "Deferrisomatales")
+
+head(ps_MMM_proteo_o@tax_table)
+
+MMM_proteo_order <- ps_MMM_proteo_o@tax_table #there are also "Smithella" and "sva0081 sediment group" genuses, don't want
+
+###so I will subset by family within proteobacteria
+
+ps_MMM_proteo_f <- subset_taxa(ps.noncontam, family == "Desulfomicrobiaceae" | family == "	Desulfohalobiaceae" | family == "Desulfonatronaceae" | family == "Desulfobulbaceae" | family =="Syntrophaceae"| family == "Geobacteraceae" | family == "Desulfomonilaceae"| family == "Desulfovibrionaceae" | family =="Deferrisomataceae" | family == "Desulfitobacteriaceae")
+
+ps_MMM_proteo_f@tax_table #still includes things I don't want, like Citrifermentans, Geotalea, Bilophila
+
+#didn't include: syntrophorhabdus aromaticivorans, delta proteobacterium mlms-1, delta proteobacterium naphS2 (unsure what order)
+
+#order=="Desulfuromonadales"  does not seem to exist
+
+###subset by family within Firmicutes
+
+ps_MMM_firm_f <- subset_taxa(ps.noncontam, family == "Oscillospiraceae"| family== "Peptococcaceae"| family =="Gracilibacteraceae" | family == "Desulfitobacteriaceae" | family == "	Syntrophomonadaceae" | family == "Veillonellaceae")
+
+ps_MMM_firm_f@tax_table #still includes many genus that I don't want, like Veillonella, UCG-005,
+#need to subset more
+
+#couldn't find: desulfitobacterium dichloroeliminans
+
+###subset by family within archaea
+
+ps_MMM_arch_f <- subset_taxa(ps.noncontam, family == "Methanomicrobiaceae" | family == "Methanoregulaceae" | family == "Methanomassiliicoccaceae" | family == "Methanospirillaceae" | family == "Methanosarcinaceae" | family == "Methanocellaceae")
+
+ps_MMM_arch_f@tax_table #still includes non-methylating genus like Methanosarcina, Rice Cluster I, Methanolinea
+
+### QUESTION: should I subset down to genus level instead?
+# It doesn't take into account the NAs but at least I would be sure that no non-methylators present
+
+#subsetting to genus level
+#proteo
+ps_MMM_proteo_g <- subset_taxa(ps.noncontam, genus == "Desulfovibrio" | genus == "Desulfomicrobium" | genus == "Desulfonatronospira" | genus == "Desulfonatronum" | genus == "Desulfobulbus" | genus == "Geobacter" | genus == "Syntrophorhabdus" | genus == "Desulfomonile" | genus == "Syntrophus" | genus == "Deferrisoma")
+
+ps_MMM_proteo_g@tax_table
+
+#firmicutes
+ps_MMM_firm_g <- subset_taxa(ps.noncontam, genus == "Acetivibrio" | genus == "Dehalobacter" | genus == "Desulfitobacterium" | genus == "Desulfosporosinus" | genus == "Ethanoligenens" | genus == "Syntrophobotulus" | genus == "Dethiobacter" | genus == "Acetonema")
+
+ps_MMM_firm_g@tax_table
+
+#archaea
+ps_MMM_arch_g <- subset_taxa(ps.noncontam, genus == "Methanofollis" | genus == "Methanoregula" | genus == "Methanomassiliicoccus" | genus == "Methanosphaerula" | genus == "Methanospirillum" | genus == "Methanolobus" | genus == "Methanomethylovorans" | genus == "Methanocella")
+
+ps_MMM_arch_g@tax_table
+
+head(ps_MMM_arch_f@otu_table)
+```
+
+
+#Create plots with MMM only
+
+```{r}
+#Create ps_ra with all MMM, based on Parks et al. (2013) paper
+
+ps_ra_MMM <- subset_taxa(ps_ra, genus == "Desulfovibrio" | genus == "Desulfomicrobium" | genus == "Desulfonatronospira" | genus == "Desulfonatronum" | genus == "Desulfobulbus" | genus == "Geobacter" | genus == "Syntrophorhabdus" | genus == "Desulfomonile" | genus == "Syntrophus" | genus == "Deferrisoma"| genus == "Acetivibrio" | genus == "Dehalobacter" | genus == "Desulfitobacterium" | genus == "Desulfosporosinus" | genus == "Ethanoligenens" | genus == "Syntrophobotulus" | genus == "Dethiobacter" | genus == "Acetonema" | genus == "Methanofollis" | genus == "Methanoregula" | genus == "Methanomassiliicoccus" | genus == "Methanosphaerula" | genus == "Methanospirillum" | genus == "Methanolobus" | genus == "Methanomethylovorans" | genus == "Methanocella")
+
+ps_Vicinamibacteria<-otu_table(subset_taxa(ps_ra, class == "Vicinamibacteria"))
+
+Vicinamibacteria<-otu_table(ps_Vicinamibacteria)
+Vicinamibacteria<-as.data.frame(Vicinamibacteria)
+
+#Subset Englesby & Winooski
+ps_ra_MMM_Englesby <- subset_samples(ps_ra_MMM, river == "E")
+ps_ra_MMM_Winooski <- subset_samples(ps_ra_MMM, river == "W")
+ps_ra_MMM_blank <- subset_samples(ps_ra_MMM, site %in% c("Blank"))
+
+# Create all sample type graphs from the level of order
+
+o1 <- plot_bar(subset_samples(ps_ra_MMM_Englesby), fill="order")+
+  geom_bar(aes(fill=order), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_o) +
+  ggtitle("Englesby") +
+  facet_grid(. ~ site, scales = "free", space = "free")+
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
+  theme(axis.title.y = element_text(size = 11))+
+  ylab("Relative Abundance")
+
+o2 <-  plot_bar(subset_samples(ps_ra_MMM_blank), fill="order")+
+  geom_bar(aes(fill=order), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_o) +
+  ggtitle("Negative Control") +
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
+  theme(axis.title.y = element_text(size = 11))+
+  ylab("Relative Abundance")
+
+o3 <-  plot_bar(subset_samples(ps_ra_MMM_Winooski), fill="order")+
+  geom_bar(aes(fill=order), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_o) +
+  ggtitle("Winooski") +
+  facet_grid(. ~ site, scales = "free", space = "free")+
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
+  theme(axis.title.y = element_text(size = 11))+
+  ylab("Relative Abundance")
+
+
+#plot order graph with common legend
+#bottom_row_O<- plot_grid(o3,o4,o2, labels = c("B","C","D"), ncol = 3, nrow = 1)
+
+
+O_grid <-plot_grid(o1,o3,o2, labels = c("A","B","C"), ncol = 1)
+
+o_legend <- plot_bar(subset_samples(ps_ra_MMM), fill="order")+
+  geom_bar(aes(fill=order), stat="identity",position="stack") +
+  scale_fill_manual(values=palette_o) +
+  ggtitle("All Samples") +
+  theme(legend.position = "bottom") 
+
+
+legendO <- get_legend(
+  o_legend +
+    theme(legend.position = "bottom")
+)
+
+plot_grid(O_grid, o_legend, ncol = 1, rel_heights = c(1, .5))  
+
+png(file="MMM_order_barplot.png", width=10, height = 10, units='in', res = 300)
+plot_grid(O_grid, o_legend, ncol = 1, rel_heights = c(1, .5))
+dev.off()
+```
+
+#Plotting abundance graph using genus only MMM
+
+```{r}
+# Create all sample type graphs from the level of order
+
+g1 <- plot_bar(subset_samples(ps_ra_MMM_Englesby), fill="genus")+
+  geom_bar(aes(fill=genus), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_g) +
+  ggtitle("Englesby") +
+  facet_grid(. ~ site, scales = "free", space = "free")+
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(size=15, angle=0,hjust=0.5), plot.title = element_text(size = 18, face = "bold"))+
+  theme(axis.title.y = element_text(size = 18), axis.text.y = element_text(size=15))+
+  ylab("Relative Abundance")
+
+#g2 <-  plot_bar(subset_samples(ps_ra_MMM_blank), fill="genus")+
+#  geom_bar(aes(fill=order), stat="identity",position="stack") +
+#  theme(strip.text=element_text(face="bold")) +
+#  scale_fill_manual(values=palette_o) +
+#  ggtitle("Negative Control") +
+#  theme(legend.position = "none") +
+#  theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
+#  theme(axis.title.y = element_text(size = 11))+
+#  ylab("Relative Abundance")
+
+g3 <-  plot_bar(subset_samples(ps_ra_MMM_Winooski), fill="genus")+
+  geom_bar(aes(fill=genus), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_g) +
+  ggtitle("Winooski") +
+  facet_grid(. ~ site, scales = "free", space = "free")+
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(size=15, angle=0,hjust=0.5), plot.title = element_text(size = 18, face = "bold"))+
+  theme(axis.title.y = element_text(size = 18), axis.text.y = element_text(size=15))+
+  ylab("Relative Abundance")
+
+
+#plot order graph with common legend
+#bottom_row_O<- plot_grid(o3,o4,o2, labels = c("B","C","D"), ncol = 3, nrow = 1)
+
+
+g_grid <-plot_grid(g1,g3, nrow = 2)
+
+g_legend <- plot_bar(subset_samples(ps_ra_MMM), fill="genus")+
+  geom_bar(aes(fill=genus), stat="identity",position="stack") +
+  scale_fill_manual(values=palette_g) +
+  theme(legend.position = "bottom") +
+  theme(axis.text.x = element_text(size=15))
+
+#legend <- get_plot_component(
+#  g_legend, 'guide-box-bottom', return_all = TRUE +
+#    theme(legend.position = "bottom")
+#)
+
+legendg <- get_legend(
+  g_legend +
+    theme(legend.position = "bottom")+
+    theme(legend.text=element_text(size=15), legend.title=element_text(size=18))+
+    guides(fill = guide_legend(nrow = 7))
+)
+
+plot_grid(g_grid, legendg, ncol = 1, rel_heights = c(1, .5))  
+
+png(file="MMM_genus_barplot.png", width=10, height = 5, units='in', res = 1000)
+plot_grid(g_grid, legendg, ncol = 1, rel_heights = c(1, .5))
+dev.off()
+```
+
+#Phylum barplot but with MMM samples only
+```{r}
+p1 <- plot_bar(subset_samples(ps_ra_MMM_Englesby), fill="phylum")+
+  geom_bar(aes(fill=phylum), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_p) +
+  ggtitle("Englesby") +
+  facet_grid(. ~ site, scales = "free", space = "free")+
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(size=15, angle=0,hjust=0.5), plot.title = element_text(size = 18, face = "bold"))+
+  theme(axis.title.y = element_text(size = 18), axis.text.y = element_text(size=15))+
+  ylab("Relative Abundance")
+
+#g2 <-  plot_bar(subset_samples(ps_ra_MMM_blank), fill="genus")+
+#  geom_bar(aes(fill=order), stat="identity",position="stack") +
+#  theme(strip.text=element_text(face="bold")) +
+#  scale_fill_manual(values=palette_o) +
+#  ggtitle("Negative Control") +
+#  theme(legend.position = "none") +
+#  theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
+#  theme(axis.title.y = element_text(size = 11))+
+#  ylab("Relative Abundance")
+
+p3 <-  plot_bar(subset_samples(ps_ra_MMM_Winooski), fill="phylum")+
+  geom_bar(aes(fill=phylum), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_p) +
+  ggtitle("Winooski") +
+  facet_grid(. ~ site, scales = "free", space = "free")+
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(size=15, angle=0,hjust=0.5), plot.title = element_text(size = 18, face = "bold"))+
+  theme(axis.title.y = element_text(size = 18), axis.text.y = element_text(size=15))+
+  ylab("Relative Abundance")
+
+
+#plot order graph with common legend
+#bottom_row_O<- plot_grid(o3,o4,o2, labels = c("B","C","D"), ncol = 3, nrow = 1)
+
+
+p_grid <-plot_grid(p1,p3, nrow = 2)
+
+p_legend <- plot_bar(subset_samples(ps_ra_MMM), fill="phylum")+
+  geom_bar(aes(fill=phylum), stat="identity",position="stack") +
+  scale_fill_manual(values=palette_p) +
+  theme(legend.position = "bottom") 
+
+#legend <- get_plot_component(
+#  g_legend, 'guide-box-bottom', return_all = TRUE +
+#    theme(legend.position = "bottom")
+#)
+
+legendp <- get_legend(
+  p_legend +
+    theme(legend.position = "bottom")
+  + theme(legend.text=element_text(size=15), legend.title=element_text(size=18))+
+    guides(fill = guide_legend(nrow = 2))
+)
+
+plot_grid(p_grid, legendp, ncol = 1, rel_heights = c(1, .5))  
+
+png(file="MMM_HgOnly_phylum_barplot.png", width=10, height = 5, units='in', res = 1000)
+plot_grid(p_grid, legendp, ncol = 1, rel_heights = c(1, .5))
+dev.off()
+
+plot_grid(p_grid, g_grid, legendp, legendg, ncol = 2, rel_heights = c(1, .5))  
+
+png(file="MMM_HgOnly_genus_phylum_barplot.png", width=17, height = 12, units='in', res = 1000)
+plot_grid(p_grid, g_grid, legendp, legendg, ncol = 2, rel_heights = c(1, .5))
+dev.off()
+```
+
+
+#Repeat with real abundances
+```{r}
+ps_MMM <- subset_taxa(ps.noncontam, genus == "Desulfovibrio" | genus == "Desulfomicrobium" | genus == "Desulfonatronospira" | genus == "Desulfonatronum" | genus == "Desulfobulbus" | genus == "Geobacter" | genus == "Syntrophorhabdus" | genus == "Desulfomonile" | genus == "Syntrophus" | genus == "Deferrisoma"| genus == "Acetivibrio" | genus == "Dehalobacter" | genus == "Desulfitobacterium" | genus == "Desulfosporosinus" | genus == "Ethanoligenens" | genus == "Syntrophobotulus" |genus == "Dethiobacter" | genus == "Acetonema" | genus == "Methanofollis" | genus == "Methanoregula" | genus == "Methanomassiliicoccus" | genus == "Methanosphaerula" | genus == "Methanospirillum" | genus == "Methanolobus" | genus == "Methanomethylovorans" | genus == "Methanocella")
+
+#Subset Englesby & Winooski
+ps_MMM_Englesby <- subset_samples(ps_MMM, river == "E")
+ps_MMM_Winooski <- subset_samples(ps_MMM, river == "W")
+ps_MMM_blank <- subset_samples(ps_MMM, site %in% c("Blank"))
+ps_MMM_RL <- subset_samples(ps_MMM, site == "RL")
+ps_MMM_RW <- subset_samples(ps_MMM, site == "RW")
+ps_MMM_B <- subset_samples(ps_MMM, site == "B")
+
+# Create all sample type graphs from the level of genus
+
+g1 <- plot_bar(subset_samples(ps_MMM_Englesby), fill="genus")+
+  geom_bar(aes(fill=genus), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_o) +
+  ggtitle("Englesby") +
+  facet_grid(. ~ site, scales = "free", space = "free")+
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(size=8, angle=0,hjust=0.5))+
+  theme(axis.title.y = element_text(size = 11))+
+  ylab("Number of ASVs")
+
+g3 <-  plot_bar(subset_samples(ps_MMM_Winooski), fill="genus")+
+  geom_bar(aes(fill=genus), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_o) +
+  ggtitle("Winooski") +
+  facet_grid(. ~ site, scales = "free", space = "free")+
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(size=8, angle=0,hjust=0.5))+
+  theme(axis.title.y = element_text(size = 11))+
+  ylab("Number of ASVs")
+
+
+#plot order graph with common legend
+#bottom_row_O<- plot_grid(o3,o4,o2, labels = c("B","C","D"), ncol = 3, nrow = 1)
+
+g_grid <-plot_grid(g1,g3, ncol = 2)
+
+g_legend <- plot_bar(subset_samples(ps_MMM), fill="genus")+
+  geom_bar(aes(fill=genus), stat="identity",position="stack") +
+  scale_fill_manual(values=palette_g) +
+  theme(legend.position = "bottom") 
+
+#legend <- get_plot_component(
+#  g_legend, 'guide-box-bottom', return_all = TRUE +
+#    theme(legend.position = "bottom")
+#)
+
+legendg <- get_legend(
+  g_legend +
+    theme(legend.position = "bottom")
+)
+
+plot_grid(g_grid, legendg, ncol = 1, rel_heights = c(1, .5))  
+
+png(file="MMM_genus_realAbundance_barplot.png", width=10, height = 5, units='in', res = 1000)
+plot_grid(g_grid, legendg, ncol = 1, rel_heights = c(1, .5))
+dev.off()
+
+```
+
+```{r}
+#Real abundance at phylum level
+p1 <- plot_bar(subset_samples(ps_MMM_Englesby), fill="phylum")+
+  geom_bar(aes(fill=phylum), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_p) +
+  ggtitle("Englesby") +
+  facet_grid(. ~ site, scales = "free", space = "free")+
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(size=8, angle=0,hjust=0.5))+
+  theme(axis.title.y = element_text(size = 11))+
+  ylab("Number of ASVs")
+
+
+p3 <-  plot_bar(subset_samples(ps_MMM_Winooski), fill="phylum")+
+  geom_bar(aes(fill=phylum), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_p) +
+  ggtitle("Winooski") +
+  facet_grid(. ~ site, scales = "free", space = "free")+
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(size=8, angle=0,hjust=0.5))+
+  theme(axis.title.y = element_text(size = 11))+
+  ylab("Number of ASVs")
+
+
+#plot order graph with common legend
+#bottom_row_O<- plot_grid(o3,o4,o2, labels = c("B","C","D"), ncol = 3, nrow = 1)
+
+p_grid <-plot_grid(p1,p3, ncol = 2)
+
+p_legend <- plot_bar(subset_samples(ps_MMM), fill="phylum")+
+  geom_bar(aes(fill=phylum), stat="identity",position="stack") +
+  scale_fill_manual(values=palette_p) +
+  theme(legend.position = "bottom") 
+
+#legend <- get_plot_component(
+#  g_legend, 'guide-box-bottom', return_all = TRUE +
+#    theme(legend.position = "bottom")
+#)
+
+legendp <- get_legend(
+  p_legend +
+    theme(legend.position = "bottom")
+)
+
+plot_grid(p_grid, legendp, ncol = 1, rel_heights = c(1, .5))  
+
+png(file="MMM_phylum_realAbundance_barplot.png", width=10, height = 5, units='in', res = 1000)
+plot_grid(p_grid, legendp, ncol = 1, rel_heights = c(1, .5))
+dev.off()
+
+```
+#Creating a barplot with blanks
+```{r}
+# Create all sample type graphs from the level of order
+
+gBlank <-  plot_bar(subset_samples(ps_ra_MMM_blank), fill="genus")+
+  geom_bar(aes(fill=order), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_o) +
+  ggtitle("Negative Control") +
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
+  theme(axis.title.y = element_text(size = 12))+
+  ylab("Relative Abundance")
+
+g_legend <- plot_bar(subset_samples(ps_ra_MMM), fill="genus")+
+  geom_bar(aes(fill=genus), stat="identity",position="stack") +
+  scale_fill_manual(values=palette_g) +
+  theme(legend.position = "bottom") 
+
+legendg <- get_legend(
+  g_legend +
+    theme(legend.position = "bottom")
+)
+
+plot_grid(gBlank, legendg, ncol = 1, rel_heights = c(1, .5))  
+
+png(file="MMM_genus_Blank.png", width=10, height = 5, units='in', res = 300)
+plot_grid(gBlank, legendg, ncol = 1, rel_heights = c(1, .5))
+dev.off()
+
+#Phylum Blank
+
+pBlank <-  plot_bar(subset_samples(ps_ra_blank), fill="phylum")+
+  geom_bar(aes(fill=phylum), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_p) +
+  ggtitle("Negative Control") +
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
+  theme(axis.title.y = element_text(size = 12))+
+  ylab("Relative Abundance")
+
+p_legend <- plot_bar(subset_samples(ps_ra), fill="phylum")+
+  geom_bar(aes(fill=phylum), stat="identity",position="stack") +
+  scale_fill_manual(values=palette_p) +
+  ggtitle("Englesby") +
+  theme(legend.position = "bottom") 
+p_legend
+
+legend <- get_plot_component(
+  p_legend, 'guide-box-bottom', return_all = TRUE +
+    theme(legend.position = "bottom")
+)
+
+plot_grid(pBlank, legend, ncol = 1, rel_heights = c(1, .5))  
+
+png(file="pBlank.png", width=10, height =10, units='in', res = 300)
+plot_grid(pBlank, legend, ncol = 1, rel_heights = c(1, .5))
+dev.off()
+```
+
+#Difference in %16S rRNA by site
+```{r}
+library(dplyr)
+
+MMM_otu<-otu_table(ps_MMM)
+MMM_otu<-as.data.frame(MMM_otu)
+
+MMM_otu<-MMM_otu%>%
+  mutate(sum=rowSums(MMM_otu))
+
+write.csv(MMM_otu, file="MMM_otu.csv")
+getwd()
+
+MMM_otu_sum<-read.table("MMM_otu_sum.csv", sep = ",", header = TRUE, row.names = 1)
+
+MMM_otu_sum<-MMM_otu_sum%>%
+  filter(site!="Blank")
+
+#we first construct a linear model (lm) object
+lm.MMM<-lm(sum~river,data=MMM_otu_sum)
+
+#next we extract the residuals of the lm object
+#we will check that these are normally distributed
+#residual takes each value of each sample and subtracts it from that group's mean
+residuals<-residuals(lm.MMM)
+shapiro.test(residuals)
+#the p-value is 0.9494, so the data DO follow a normal distribution
+
+library(car)
+#we can also test for homogeneity of variance
+leveneTest(sum~river,data=MMM_otu_sum)
+#p=0.2913, fail to reject null hypothesis -> variances are equal
+
+#our assumptions are met, we can proceed to ANOVA
+#the anova function requires an lm object
+anova(lm.MMM) #p=0.3701, no sig diff by river
+
+#we first construct a linear model (lm) objec
+lm.MMM<-lm(sum~site,data=MMM_otu_sum)
+
+#next we extract the residuals of the lm object
+#we will check that these are normally distributed
+#residual takes each value of each sample and subtracts it from that group's mean
+residuals<-residuals(lm.MMM)
+shapiro.test(residuals)
+#the p-value is 0.2607, so the data DO follow a normal distribution
+
+library(car)
+#we can also test for homogeneity of variance
+leveneTest(sum~site,data=MMM_otu_sum)
+#p=0.8787, fail to reject null hypothesis -> variances are equal
+
+#our assumptions are met, we can proceed to ANOVA
+#the anova function requires an lm object
+anova(lm.MMM) #p=0.03731, sig diff by site
+
+#Proceed to Tukey Test
+#the function for this is TukeyHSD() and it must have an lm object input into it
+#you need to install and load the 'emmeans' package for this
+install.packages("emmeans")
+library(emmeans)
+countpairs <- emmeans(lm.MMM, "site")
+countUnplanned <- contrast(countpairs, method = "pairwise", adjust = "tukey")
+countUnplanned
+
+##SIG DIFF BETWEEN RL & RW
+
+```
+Analysis of Variance Table
+
+Response: sum
+          Df     Sum Sq    Mean Sq F value Pr(>F)
+river      1 0.00011636 0.00011636  0.8672 0.3701
+Residuals 12 0.00161020 0.00013418 
+
+Analysis of Variance Table
+
+Response: sum
+          Df     Sum Sq    Mean Sq F value  Pr(>F)  
+site       2 0.00077702 0.00038851  4.5008 0.03731 *
+Residuals 11 0.00094953 0.00008632
+
+ contrast estimate      SE df t.ratio p.value
+ B - RL   -0.00186 0.00759 11  -0.246  0.9674
+ B - RW    0.01361 0.00759 11   1.794  0.2166
+ RL - RW   0.01547 0.00536 11   2.884  0.0366
+
+#Getting graphs of only top 10 taxa
+
+```{r}
+#repeat with ps_ra_top for most abundant taxa
+ps_ra_Englesby_top <- subset_samples(ps_ra_top, river == "E")
+#add shorthand Englesby names
+get_variable(ps_ra_Englesby_top, "description")
+#sample_data(ps_ra_Englesby_top)$site<-c("FF Right", "FF Left", "SR Right","SR Right","SR Right","SR Right","SR Right","SR Left","SR Left","SR Left", "FF Left")
+get_variable(ps_ra_Englesby_top, "site")
+head(sample_data(ps_ra_Englesby_top))
+
+ps_ra_blank_top <- subset_samples(ps_ra_top, site %in% c("kit.negative", "kit.positive"))
+ps_ra_Winooski_top <- subset_samples(ps_ra_top, river == "W")
+
+#you can make c/p/o any number of colors you want; with as much difference between the colors as possible (distinct colors)
+c_top <- 39
+palette_c_top <- distinctColorPalette(c_top)
+p_top <-17
+palette_p_top <- distinctColorPalette(p)
+o_top <-72
+palette_o_top <- distinctColorPalette(o)
+```
+
+```{r}
+# Create all sample type graphs from the level of phylum for most abundant ASvs
+
+p1_top <- plot_bar(subset_samples(ps_ra_Englesby_top), fill="phylum")+
+  geom_bar(aes(fill=phylum), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_p_top) +
+  ggtitle("Englesby") +
+  facet_grid(. ~ site, scales = "free", space = "free")+
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank())
+
+p2_top <-  plot_bar(subset_samples(ps_ra_blank_top), fill="phylum")+
+  geom_bar(aes(fill=phylum), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_p_top) +
+  ggtitle("Controls") +
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank())
+
+p3_top <-  plot_bar(subset_samples(ps_ra_Winooski_top), fill="phylum")+
+  geom_bar(aes(fill=phylum), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_p_top) +
+  ggtitle("Winooski") +
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank())
+
+
+#plot PHYLUM graph with common legend
+#bottom_row_P_top<- plot_grid(p3_top,p4_top,p2_top, labels = c("B","C","D"), ncol = 3, nrow = 1)
+
+
+P_grid_top <-plot_grid(p1_top,p3_top, p2_top, labels = c("A","B", C), ncol = 1)
+
+p_legend_top <- plot_bar(subset_samples(ps_ra_Englesby_top), fill="phylum")+
+  geom_bar(aes(fill=phylum), stat="identity",position="stack") +
+  scale_fill_manual(values=palette_p_top) +
+  ggtitle("Englesby") +
+  theme(legend.position = "bottom") 
+
+
+legend_top <- get_legend(
+  p_legend_top +
+    theme(legend.position = "bottom")
+)
+  
+plot_grid(P_grid_top, legend_top, ncol = 1, rel_heights = c(1, .5))  
+
+
+```
+
+
+```{r}
+# Create all sample type graphs from the level of class
+c1 <- plot_bar(subset_samples(ps_ra_Englesby_top), fill="class")+
+  geom_bar(aes(fill=class), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_c) +
+  ggtitle("Englesby") +
+  facet_grid(. ~ site, scales = "free", space = "free")+
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(size=15,angle=0,hjust=0.5), plot.title = element_text(size = 20, face = "bold"))+
+  theme(axis.title.y = element_text(size = 18), axis.text.y = element_text(size=15))+
+  ylab("Relative Abundance")
+c1
+
+#Removed blank
+
+#p2 <-  plot_bar(subset_samples(ps_ra_blank), fill="phylum")+
+#  geom_bar(aes(fill=phylum), stat="identity",position="stack") +
+#  theme(strip.text=element_text(face="bold")) +
+#  scale_fill_manual(values=palette_p) +
+#  ggtitle("Negative Control") +
+#  theme(legend.position = "none") +
+#  theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
+#  theme(axis.title.y = element_text(size = 11))+
+#  ylab("Relative Abundance")
+
+c3 <-  plot_bar(subset_samples(ps_ra_Winooski_top), fill="class")+
+  geom_bar(aes(fill=class), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_c) +
+  ggtitle("Winooski") +
+  facet_grid(. ~ site, scales = "free", space = "free")+
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(size=15, angle=0,hjust=0.5), plot.title = element_text(size = 20, face = "bold"))+
+  theme(axis.title.y = element_text(size = 18), axis.text.y = element_text(size=15))+
+  ylab("Relative Abundance")
+
+
+#plot PHYLUM graph with common legend
+C_grid <-plot_grid(c1,c3, labels = c("A","B"), ncol = 2, nrow = 1)
+#C_grid <-plot_grid(p1,p3,p2, labels = c("A","B","C"), ncol = 3, nrow = 1)
+
+#bottom_row_P<- plot_grid(p3,p4,p2, labels = c("B","C","D"), ncol = 3, nrow = 1)
+
+
+#P_grid <-plot_grid(p1,bottom_row_P, labels = c("A",""), ncol = 1)
+
+c_legend <- plot_bar(subset_samples(ps_ra_Englesby_top), fill="class")+
+  geom_bar(aes(fill=class), stat="identity",position="stack") +
+  scale_fill_manual(values=palette_c) +
+  ggtitle("Englesby") +
+  theme(legend.position = "bottom") +
+  theme(axis.text.x = element_text(size=15))
+c_legend
+
+# Apply the theme to c_legend first
+c_legend <- c_legend +
+  theme(
+    legend.text = element_text(size = 18),
+    legend.title = element_text(size = 20),
+    legend.position = "bottom"
+  )
+
+# Then extract the legend
+legend <- get_plot_component(c_legend, "guide-box-bottom", return_all = TRUE)
+
+
+plot_grid(C_grid, legend, ncol = 1, rel_heights = c(1, .5))  
+
+png(file="MMM_class_top_barplot_0.5percentASV.png", width=17, height =10, units='in', res = 1000)
+plot_grid(C_grid, legend, ncol = 1, rel_heights = c(1, .5))
+dev.off()
+  
+```
+
+```{r}
+# Create all sample type graphs from the level of order
+
+o1_top <- plot_bar(subset_samples(ps_ra_Englesby_top), fill="order")+
+  geom_bar(aes(fill=order), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_o_top) +
+  ggtitle("Englesby") +
+  facet_grid(. ~ site, scales = "free", space = "free")+
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank())
+
+o2_top <-  plot_bar(subset_samples(ps_ra_blank_top), fill="order")+
+  geom_bar(aes(fill=order), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_o_top) +
+  ggtitle("Controls") +
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank())
+
+o3_top <-  plot_bar(subset_samples(ps_ra_Winooski_top), fill="order")+
+  geom_bar(aes(fill=order), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold")) +
+  scale_fill_manual(values=palette_o_top) +
+  ggtitle("Winooski") +
+  theme(legend.position = "none") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank())
+
+
+#plot order graph with common legend
+#bottom_row_O_top<- plot_grid(o3_top,o4_top,o2_top, labels = c("B","C","D"), ncol = 3, nrow = 1)
+
+
+O_grid_top <-plot_grid(o1_top,o2_top, o3_top, labels = c("A","B", "C"), ncol = 1)
+
+o_legend_top <- plot_bar(subset_samples(ps_ra_Englesby_top), fill="order")+
+  geom_bar(aes(fill=order), stat="identity",position="stack") +
+  scale_fill_manual(values=palette_o_top) +
+  ggtitle("Englesby") +
+  theme(legend.position = "bottom") 
+
+
+legendO_top <- get_legend(
+  o_legend_top +
+    theme(legend.position = "bottom")
+)
+
+plot_grid(O_grid_top, legendO_top, ncol = 1, nrow = 2, rel_heights = c(100, 0.1))
+  
+plot_grid(O_grid_top, legendO_top, ncol = 1, rel_heights = c(100, 0.1))
+
+```
+
+save.image("~/Visualization.RData")

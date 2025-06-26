@@ -1,0 +1,616 @@
+---
+title: "CN_Analysis"
+author: "Sophia"
+date: "2024-04-11"
+output: html_document
+---
+
+
+setwd("/Users/sophiafatima/Documents/7. MMM_Article/THESIS/Soil Analysis/CN Analysis")
+
+load("CN_Analysis.RData")
+
+#Non-Averaged Data Analysis
+```{r}
+setwd("/Users/sophiafatima/Library/CloudStorage/OneDrive-MiddleburyCollege/Classes/THESIS/Soil Analysis/CN Analysis")
+#setwd("C:/Users/hamia/OneDrive - Middlebury College/Classes/THESIS/Soil Analysis/CN Analysis")
+library(readr)
+cn <- read.csv("cn_analysis.csv")
+
+library(dplyr)
+library(ggplot2)
+
+#Levene's test for homogeneity of variance
+#This assumes we are doing a two-sample t-test
+#this tests the null hypothesis that variance IS EQUAL
+library(car)
+leveneTest(C_conc_mgG~River,data=cn) #P=0.1121, so variance is equal
+
+#let's do a t-test to compare means between two rivers, E & W
+#w/o taking into account the different “sites”: 7 samples per site
+#make sure you include the data argument
+#you cannot pipe something into the t.test function :(
+t.test(C_conc_mgG~River,var.equal=T,data=cn) #p-value = 0.01226
+
+#testing variance of nitrogen
+leveneTest(N_conc_mgG~River,data=cn) #P=0.1174
+
+t.test(N_conc_mgG~River,var.equal=T,data=cn) #p-value = 0.00913
+
+#since there was a significant difference between the rivers, I cannot do statistical test between Bay, RW, RL for both rivers at once
+
+#Englesby
+#we first construct a linear model (lm) object
+cn_E <- filter(cn, River=="E")
+lm.E<-lm(C_conc_mgG~Site,data=cn_E)
+
+#next we extract the residuals of the lm object
+#we will check that these are normally distributed
+#residual takes each value of each sample and subtracts it from that group's mean
+residuals<-residuals(lm)
+shapiro.test(residuals)
+#the p-value is 0.003299, so the data DO NOT follow a normal distribution
+
+hist(residuals, data=cn_E)
+#It looks like distribution is right-skewed so we take log
+lm.2<-lm(log(C_conc_mgG)~Site, data=cn_E)
+residuals2<-residuals(lm.2)
+shapiro.test(residuals2) #p=0.1442, so the data now DO follow a normal distribution
+
+#we can also test for homogeneity of variance
+leveneTest(C_conc_mgG~Site,data=cn_E)
+#p=0.5779, fail to reject null hypothesis -> variances are equal
+
+#our assumptions are met, we can proceed to ANOVA
+#the anova function requires an lm object
+anova(lm.2)
+#p=0.01289, null hypothesis is rejected, P is significant
+
+##Now test for nitrogen
+
+#First I need to filter for when data is NA
+cn_E_Nitrogen<-cn_E %>%
+  filter(N_conc_mgG!="UNKN", N_conc_mgG>0) #removing NA & values less than 0
+#removed 4 samples: EBD1, EURW2, ED1RW1, ED1RW3
+
+lm.type<-lm(N_conc_mgG~Site,data=cn_E_Nitrogen)
+
+residuals.type<-residuals(lm.type)
+shapiro.test(residuals.type)
+#the p-value is 0.1065, so the data DO follow a normal distribution, after removing 0s
+
+hist(residuals.type, data=cn_E_Nitrogen)
+
+#we can also test for homogeneity of variance
+leveneTest(N_conc_mgG~Site,data=cn_E_Nitrogen)
+#p=0.2466, fail to reject null hypothesis -> variances are equal
+
+#our assumptions are met, we can proceed to ANOVA
+#the anova function requires an lm object
+anova(lm.type)
+
+#No significant difference in Nitrogen between sites
+
+```
+#	Two Sample t-test (C)
+
+data:  Carbon_mg by River
+t = 2.6444, df = 43, p-value = 0.01138
+alternative hypothesis: true difference in means between group E and group W is not equal to 0
+95 percent confidence interval:
+ 0.09185094 0.68205103
+sample estimates:
+mean in group E mean in group W 
+      0.6836915       0.2967405 
+      
+#	Two Sample t-test (N)
+
+data:  Nitrogen_mg by River
+t = 2.7519, df = 43, p-value = 0.00864
+alternative hypothesis: true difference in means between group E and group W is not equal to 0
+95 percent confidence interval:
+ 0.005493483 0.035631635
+sample estimates:
+mean in group E mean in group W 
+     0.03442118      0.01385862 
+     
+
+#Analysis of Variance Table for log-transformed Carbon
+
+Response: log(Carbon_mg)
+          Df  Sum Sq Mean Sq F value  Pr(>F)  
+Site       2  5.8186 2.90929  5.3913 0.01289 *
+Residuals 21 11.3323 0.53963                  
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+# Analysis of Variance Table for Nitrogen
+
+Response: Nitrogen_mg
+          Df    Sum Sq   Mean Sq F value Pr(>F)  
+Site       2 0.0041238 0.0020619  3.1203 0.0701 .
+Residuals 17 0.0112336 0.0006608                 
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+#Tukey Test for Carbon, Englesby
+
+```{r}
+#the function for this is TukeyHSD() and it must have an lm object input into it
+#you need to install and load the 'emmeans' package for this
+install.packages("emmeans")
+library(emmeans)
+countpairs <- emmeans(lm.2, "Site")
+countUnplanned <- contrast(countpairs, method = "pairwise", adjust = "tukey")
+countUnplanned
+
+#looks like sig difference between B & RL, almost significant diff between RL & RW (p=0.0682)
+```
+#Results of Tukey Test
+ contrast estimate    SE df t.ratio p.value
+ B - RL     -1.198 0.387 21  -3.094  0.0146
+ B - RW     -0.378 0.387 21  -0.977  0.5990
+ RL - RW     0.820 0.346 21   2.367  0.0682
+
+Results are given on the log (not the response) scale. 
+P value adjustment: tukey method for comparing a family of 3 estimates 
+
+#Repeat everything above with Winooski Samples
+```{r}
+#Winooski
+#we first construct a linear model (lm) object
+cn_W <- filter(cn, River=="W")
+
+##CARBON
+lm.W<-lm(C_conc_mgG~Site,data=cn_W)
+
+#next we extract the residuals of the lm object
+#we will check that these are normally distributed
+#residual takes each value of each sample and subtracts it from that group's mean
+residuals<-residuals(lm.W)
+shapiro.test(residuals)
+#the p-value is 0.001653, so the data DO NOT follow a normal distribution
+
+#check histogram
+hist(residuals, data=cn_W)
+
+#It looks like distribution is right-skewed so we take log
+lm.W2<-lm(log(C_conc_mgG)~Site, data=cn_W)
+residuals2<-residuals(lm.W2)
+shapiro.test(residuals2) #p=0.3096, so the data now DO follow a normal distribution
+
+#we can also test for homogeneity of variance
+leveneTest(C_conc_mgG~Site,data=cn_W)
+#p=0.8511, fail to reject null hypothesis -> variances are equal
+
+#our assumptions are met, we can proceed to ANOVA
+#the anova function requires an lm object
+anova(lm.W2)
+
+##NITROGEN
+#It seems there are too many N values below detection limit...
+#If I get rid of all values of 0, I am only left w/mostly WU & WB sites
+#Only 9 samples have N values not 0
+#Perhaps not worth the analysis
+
+```
+#Analysis of Variance Table for log-transformed Carbon
+
+Response: log(Carbon_mg)
+          Df Sum Sq Mean Sq F value   Pr(>F)   
+Site       2 16.130  8.0648  7.4964 0.004282 **
+Residuals 18 19.365  1.0758                    
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+#Tukey Test for Carbon, Winooski
+```{r}
+#the function for this is TukeyHSD() and it must have an lm object input into it
+#you need to install and load the 'emmeans' package for this
+library(emmeans)
+countpairs <- emmeans(lm.W2, "Site")
+countUnplanned <- contrast(countpairs, method = "pairwise", adjust = "tukey")
+countUnplanned
+
+#looks like sig difference between B & RL(p=0.0031) and B & RW (p=0.0197)
+#no sig diff between RL & RW
+```
+
+
+#Visualization
+```{r}
+#making a box-plot
+cn_E%>%
+  ggplot(aes(x=Site, y=C_conc_mgG))+
+  geom_boxplot()+
+  xlab("Englesby Sites")+
+  ylab("Carbon (mg)")+
+  theme_classic()
+
+cn_W%>%
+  ggplot(aes(x=Site, y=Carbon_mg))+
+  geom_boxplot()+
+  xlab("Winooski Sites")+
+  ylab("Carbon (mg)")+
+  theme_classic()
+
+#Making scatterplot with Winooski data
+  W_C.plot<-ggplot() + geom_point(data=cn_W, aes(x = Site, y = Carbon_mg, color=name, shape=name), size=5, show.legend=TRUE)+
+  scale_shape_manual(values=c(0, 1, 2, 4, 5, 6, 7))+
+  labs(y = "Carbon (mg/g dry wt)", x=NULL) + 
+  theme_bw() + theme(panel.border = element_blank())+
+  theme(text=element_text(size=12),
+        axis.text.x = element_text(angle = 45, hjust=1 ))+
+    labs(color="Sampling Site", shape="Sampling Site", size=NULL)
+#Making scatterplot with Englesby data
+  E_C.plot<-  ggplot() + geom_point(data=cn_E, aes(x = Site, y = Carbon_mg, color=name, shape=name), size=5, show.legend=TRUE)+
+  scale_shape_manual(values=c(0, 1, 2, 4, 5, 6, 7))+
+  labs(y = "Carbon (mg/g dry wt)", x=NULL) + 
+  labs(color="Sampling Site", shape="Sampling Site", size=NULL)+
+  theme_bw() + theme(panel.border = element_blank())+
+  theme(text=element_text(size=12),
+        axis.text.x = element_text(angle = 45, hjust=1 ))
+  
+ggsave("W_C.tiff", plot = W_C.plot, dpi = 1200, width = 8, height = 5, units = "in")
+ggsave("E_C.tiff", plot = E_C.plot, dpi = 1200, width = 8, height = 5, units = "in")
+    
+  ##NITROGEN
+#Making scatterplot with Winooski data
+  W_N<-ggplot() + geom_point(data=cn_W, aes(x = Site, y = Nitrogen_mg, color=name, shape=name), size=5, show.legend=TRUE)+
+  scale_shape_manual(values=c(0, 1, 2, 4, 5, 6, 7))+
+  labs(y = "Nitrogen (mg/g dry wt)", x=NULL) + 
+  theme_bw() + theme(panel.border = element_blank())+
+  theme(text=element_text(size=12),
+        axis.text.x = element_text(angle = 45, hjust=1 ))+
+    labs(color="Sampling Site", shape="Sampling Site", size=NULL)
+#Making scatterplot with Englesby data
+  E_N<-ggplot() + geom_point(data=cn_E, aes(x = Site, y = N_conc_mgG, color=name, shape=name), size=5, show.legend=TRUE)+
+  scale_shape_manual(values=c(0, 1, 2, 4, 5, 6, 7))+
+  labs(y = "Nitrogen (mg/g dry wt)", x=NULL) + 
+  labs(color="Sampling Site", shape="Sampling Site", size=NULL)+
+  theme_bw() + theme(panel.border = element_blank())+
+  theme(text=element_text(size=12),
+        axis.text.x = element_text(angle = 45, hjust=1 ))
+  
+ggsave("W_N.tiff", plot = W_C.plot, dpi = 1200, width = 8, height = 5, units = "in")
+ggsave("E_N.tiff", plot = E_C.plot, dpi = 1200, width = 8, height = 5, units = "in")
+```
+
+#CONCLUSIONS:
+Sig diff in carbon between sites in both Winooski & Englesby River, no sig difference in N in Englesby
+Did not do statistical analysis on Englesby samples because there were too many 0 values
+
+#REDO EVERYTHING BUT AVERAGED
+
+```{r}
+setwd("/Users/sophiafatima/Library/CloudStorage/OneDrive-MiddleburyCollege/Classes/THESIS/Soil Analysis/CN Analysis")
+#setwd("C:/Users/hamia/OneDrive - Middlebury College/Classes/THESIS/Soil Analysis/CN Analysis")
+library(readr)
+cn <- read.csv("cn_analysis.csv")
+
+library(dplyr)
+#Taking the average of each site
+###AVERAGING CN###
+cn_avg<-cn%>%
+    group_by(name, Site)%>%
+    mutate(avg_c=mean(C_conc_mgG),
+           avg_n=mean(N_conc_mgG),
+          )%>%
+    select(name, River, Site, avg_c, avg_n)%>%
+    distinct()
+
+library(car)
+leveneTest(avg_c~River,data=cn_avg) #P=0.3654, so variance is equal
+
+#let's do a t-test to compare means between two rivers, E & W
+t.test(avg_c~River,var.equal=T,data=cn_avg) #p-value = 0.1009
+
+#mean in group E mean in group W 
+#    0.024256063     0.009970067 
+
+#NO SIG DIFF BETWEEN RIVERS SO CAN COMBINE THE DATA
+
+#testing variance of nitrogen
+leveneTest(avg_n~River,data=cn_avg) #P=0.2223
+
+t.test(avg_n~River,var.equal=T,data=cn_avg) #p-value = 0.09877
+
+#mean in group E mean in group W 
+#   0.0012280731    0.0004652186
+
+#since there was not a significant difference between the rivers, I can do statistical test between Bay, RW, RL for both rivers at once
+
+```
+
+```{r}
+
+### STATISTICAL ANALYSIS WITH ALL AVERAGED SAMPLES (WINOOSKI & ENGLESBY) ###
+
+#we first construct a linear model (lm) object
+lm.all<-lm(avg_c~Site,data=cn_avg)
+
+#next we extract the residuals of the lm object
+residuals<-residuals(lm.all)
+shapiro.test(residuals)
+#the p-value is 0.1409, so the data DO follow a normal distribution
+
+#we can also test for homogeneity of variance
+leveneTest(avg_c~Site,data=cn_avg)
+#p=0.6007, fail to reject null hypothesis -> variances are equal
+
+#our assumptions are met, we can proceed to ANOVA
+#the anova function requires an lm object
+anova(lm.all)
+#p=0.6684, null hypothesis supported
+
+#          Df     Sum Sq    Mean Sq F value Pr(>F)
+#Site       2 1.6785e-06 8.3927e-07   0.418 0.6684
+#Residuals 11 2.2086e-05 2.0078e-06  
+
+cn_RLRW<- cn_avg%>%
+  filter(Site != "B")
+
+leveneTest(avg_n~Site,data=cn_RLRW) #P=0.4877, so variance is equal
+
+#let's do a t-test to compare means between two rivers, E & W
+t.test(avg_c~Site,var.equal=T,data=cn_RLRW) #p-value = 0.5057
+
+#mean in group RL mean in group RW 
+#      0.01940209       0.01260400 
+
+
+summarized_cn<-cn_avg%>%
+  group_by(River, Site)%>%
+  summarize(mean(avg_n), mean(avg_c), sd(avg_n), sd(avg_c))
+
+write.csv(summarized_cn, file="summarized_cn2.csv")
+
+#mean in group RL mean in group RW 
+#       0.5833999        0.3785860 
+
+##Now test for nitrogen
+
+#First I need to filter for when data is NA
+cn_avg_filtered<-cn_avg %>%
+  filter(avg_n>0) #removing WD1
+
+lm.n<-lm(avg_n~Site,data=cn_avg_filtered)
+
+residuals.n<-residuals(lm.n)
+shapiro.test(residuals.n)
+#the p-value is 0.07885, so the data DO NOT follow a normal distribution, after removing 0s
+
+hist(residuals.n, data=cn_avg_filtered)
+#data seem right skewed so let's take log
+lm.n2<-lm(log(avg_n)~Site, data=cn_avg_filtered)
+residuals2<-residuals(lm.n2)
+shapiro.test(residuals2) #p=0.8537, so the data now DO follow a normal distribution
+
+#we can also test for homogeneity of variance
+leveneTest(avg_n~Site,data=cn_avg_filtered)
+#p=0.7888, fail to reject null hypothesis -> variances are equal
+
+anova(lm.n2) #p=0.2573
+
+#No significant difference in Nitrogen between sites
+
+### STATISTICAL ANALYSIS with SUBSETS ###
+#Carbon
+
+cn_avg.E<-cn_avg%>%
+  filter(River=="E") #Englesby Brook
+
+#we first construct a linear model (lm) object
+lm.all<-lm(avg_c~Site,data=cn_avg.E)
+
+#next we extract the residuals of the lm object
+residuals<-residuals(lm.all)
+shapiro.test(residuals)
+#the p-value is 0.1193, so the data DO follow a normal distribution
+
+#we can also test for homogeneity of variance
+leveneTest(avg_c~Site,data=cn_avg.E)
+#p=0.7862, fail to reject null hypothesis -> variances are equal
+
+#our assumptions are met, we can proceed to ANOVA
+#the anova function requires an lm object
+anova(lm.all)
+#p=0.4701, null hypothesis supported
+
+#Nitrogen
+
+#we first construct a linear model (lm) object
+lm.all<-lm(avg_n~Site,data=cn_avg.E)
+
+#next we extract the residuals of the lm object
+residuals<-residuals(lm.all)
+shapiro.test(residuals)
+#the p-value is 0.1636, so the data DO follow a normal distribution
+
+#we can also test for homogeneity of variance
+leveneTest(avg_n~Site,data=cn_avg.E)
+#p=0.7737, fail to reject null hypothesis -> variances are equal
+
+#our assumptions are met, we can proceed to ANOVA
+#the anova function requires an lm object
+anova(lm.all)
+#p=0.4273, null hypothesis supported
+
+
+### STATISTICAL ANALYSIS with SUBSETS ###
+
+cn_avg.W<-cn_avg%>%
+  filter(River=="W")
+
+#we first construct a linear model (lm) object
+lm.all<-lm(avg_c~Site,data=cn_avg.W)
+
+#next we extract the residuals of the lm object
+residuals<-residuals(lm.all)
+shapiro.test(residuals)
+#the p-value is 0.2882, so the data DO follow a normal distribution
+
+#we can also test for homogeneity of variance
+leveneTest(avg_c~Site,data=cn_avg.W)
+#p=0.739, fail to reject null hypothesis -> variances are equal
+
+#our assumptions are met, we can proceed to ANOVA
+#the anova function requires an lm object
+anova(lm.all)
+#p=0.0264, SIG DIFF
+
+#Tukey Test
+library(emmeans)
+countpairs <- emmeans(lm.all, "Site")
+countUnplanned <- contrast(countpairs, method = "pairwise", adjust = "tukey")
+countUnplanned
+
+ #contrast estimate      SE df t.ratio p.value
+ #B - RL    0.03108 0.00707  4   4.398  0.0253
+ #B - RW    0.02860 0.00707  4   4.046  0.0334
+ #RL - RW  -0.00248 0.00500  4  -0.497  0.8766
+
+#Nitrogen
+
+#we first construct a linear model (lm) object
+lm.all<-lm(avg_n~Site,data=cn_avg.W)
+
+#next we extract the residuals of the lm object
+residuals<-residuals(lm.all)
+shapiro.test(residuals)
+#the p-value is 0.1152, so the data DO follow a normal distribution
+
+#we can also test for homogeneity of variance
+leveneTest(avg_n~Site,data=cn_avg.W)
+#p=0.7901, fail to reject null hypothesis -> variances are equal
+
+#our assumptions are met, we can proceed to ANOVA
+#the anova function requires an lm object
+anova(lm.all)
+#p=0.3733, null hypothesis supported
+
+```
+
+Analysis of Variance Table
+
+Response: log(avg_n)
+          Df Sum Sq Mean Sq F value Pr(>F)
+Site       2 2.4854 1.24270  1.6116 0.2582
+Residuals  8 6.1686 0.77108
+
+#Drawing Plot with Mercury
+
+```{r}
+#write.csv(cn_avg, "/Users/sophiafatima/Documents/7. MMM_Article/THESIS/Soil Analysis/cn_avg.csv", row.names=TRUE)
+
+setwd("/Users/sophiafatima/Documents/7. MMM_Article/THESIS/Soil Analysis/CN Analysis")
+
+library(readr)
+library(ggplot2)
+cn_Hg <- read.csv("/Users/sophiafatima/Documents/7. MMM_Article/THESIS/Soil Analysis/CN Analysis/cn_hg.csv")
+
+cn_Hg.W<-cn_Hg%>%
+  filter(River=="W")
+
+Hg_C.plot<-
+cn_Hg.W%>%
+  ggplot(aes(x=avg_c,y=Average_Hg))+
+  geom_point()+
+  theme_classic(base_size=20)+
+  labs(x="Average C (mg/g dry wt)", y="Average THg (ng/g)")
+  
+
+Hg_C.plot
+
+Hg_C.plot <- Hg_C.plot+
+  geom_smooth(method="lm")
+
+ggsave("W_Hg_C_plot.tiff", plot = Hg_C.plot, dpi = 1000, width = 8, height = 5, units = "in")
+
+cor.test(cn_Hg.W$avg_c,cn_Hg.W$Average_Hg)
+
+#Englesby
+
+cn_Hg.E<-cn_Hg%>%
+  filter(River=="E")
+
+E_Hg_C.plot<-
+cn_Hg.E%>%
+  ggplot(aes(x=avg_c,y=Average_Hg))+
+  geom_point()+
+  theme_classic(base_size=20)+
+  labs(x="Average C (mg/g dry wt)", y="Average THg (ng/g)")
+
+png(file="MMM_total_class_barplot2.png", width=18, height = 10, units='in', res = 300)
+
+E_Hg_C.plot
+
+E_Hg_C.plot <- E_Hg_C.plot+
+  geom_smooth(method="lm")
+
+cor.test(cn_Hg.E$avg_c,cn_Hg.E$Average_Hg)
+ggsave("E_Hg_C_plot.tiff", plot = E_Hg_C.plot, dpi = 1000, width = 8, height = 5, units = "in")
+
+# Winooski N
+
+cn_Hg.W<-cn_Hg%>%
+  filter(River=="W")
+
+Hg_N.plot<-
+cn_Hg.W%>%
+  ggplot(aes(x=avg_n,y=Average_Hg))+
+  geom_point()+
+  theme_classic(base_size=20)+
+  labs(x="Average N (mg/g dry wt)", y="Average Hg (ng/g)")
+  
+
+Hg_N.plot
+
+Hg_N.plot+
+  geom_smooth(method="lm")
+
+cor.test(cn_Hg.W$avg_n,cn_Hg.W$Average_Hg)
+
+#Englesby N
+
+cn_Hg.E<-cn_Hg%>%
+  filter(River=="E")
+
+Hg_N.plot<-
+cn_Hg.E%>%
+  ggplot(aes(x=avg_n,y=Average_Hg))+
+  geom_point()+
+  theme_classic(base_size=20)+
+  labs(x="Average N (mg/g)", y="Average Hg (ng/g)")
+
+Hg_N.plot
+
+Hg_N.plot+
+  geom_smooth(method="lm")
+
+cor.test(cn_Hg.E$avg_n,cn_Hg.E$Average_Hg)
+```
+
+##ALL SAMPLES CORR TEST
+	Pearson's product-moment correlation
+
+data:  cn_Hg$avg_c and cn_Hg$Average_Hg
+t = 3.5386, df = 12, p-value = 0.004081
+alternative hypothesis: true correlation is not equal to 0
+95 percent confidence interval:
+ 0.2963885 0.9028560
+sample estimates:
+      cor 
+0.7145928 
+
+##WINOOSKI CORR TEST
+	Pearson's product-moment correlation
+
+data:  cn_Hg.E$avg_c and cn_Hg.E$Average_Hg
+t = 3.1942, df = 5, p-value = 0.02415
+alternative hypothesis: true correlation is not equal to 0
+95 percent confidence interval:
+ 0.1727065 0.9723904
+sample estimates:
+      cor 
+0.8192187 
