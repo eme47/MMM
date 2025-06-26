@@ -6,7 +6,7 @@ output: html_document
 ---
 
 
-setwd("/Users/sophiafatima/Documents/7. MMM_Article/THESIS/Soil Analysis/CN Analysis")
+setwd("/Users/sophiafatima/Documents/7. MMM_Article/THESIS/Soil Analysis/CN Analysis") #ensure this path leads to your working directory
 
 load("CN_Analysis.RData")
 
